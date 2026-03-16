@@ -1,0 +1,70 @@
+{
+  "doc_types": {
+    "invoice": {
+      "analyzer_id": "ocrInvoice",
+      "description": "請求書分析用アナライザー",
+      "field_schema": {
+        "name": "InvoiceAnalysis",
+        "fields": {
+          "InvoiceTotal": {
+            "type": "string",
+            "description": "請求書の合計金額。3桁ごとのカンマ区切りで返す(例: '75,970.20')。欧州表記(例: 1.234,56)の場合は米国/日本式(例: 1,234.56)に変換する。通貨記号(€, $, ¥, 円 など)は除外する。",
+            "method": "generate"
+          },
+          "InvoiceNumber": {
+            "type": "string",
+            "description": "請求書番号 / Invoice Number。",
+            "method": "extract"
+          },
+          "InvoiceDate": {
+            "type": "date",
+            "description": "請求書の発行日。",
+            "method": "extract"
+          },
+          "VendorName": {
+            "type": "string",
+            "description": "請求元の会社名・団体名。",
+            "method": "extract"
+          }
+        }
+      }
+    },
+    "fuel_invoice": {
+      "analyzer_id": "ocrFuelInvoice",
+      "description": "燃料請求書分析用アナライザー",
+      "field_schema": {
+        "name": "FuelInvoiceAnalysis",
+        "fields": {
+          "TotalUsage": {
+            "type": "string",
+            "description": "使用量合計。数値と単位(L, kL, m3 など)を含めて返す。",
+            "method": "extract"
+          },
+          "BillingPeriod": {
+            "type": "string",
+            "description": "請求対象期間(例: '2026年1月分')。",
+            "method": "extract"
+          },
+          "TotalAmount": {
+            "type": "string",
+            "description": "請求金額の合計。3桁ごとのカンマ区切りで返す。通貨記号は除外する。",
+            "method": "extract"
+          }
+        }
+      }
+    },
+    "generic": {
+      "analyzer_id": "ocrGeneric",
+      "description": "汎用ドキュメント分析用アナライザー",
+      "field_schema": {
+        "name": "GenericAnalysis",
+        "fields": {
+          "content": {
+            "type": "string",
+            "description": "Full text of the document"
+          }
+        }
+      }
+    }
+  }
+}
