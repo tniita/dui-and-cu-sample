@@ -29,6 +29,51 @@ load_dotenv()
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "analyzer_config.json")
 
+# ── ANSI カラー定義 ──────────────────────────────────────────────────
+
+class _C:
+    """ANSI エスケープシーケンス。NO_COLOR 環境変数で無効化可能。"""
+    _enabled = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+
+    RESET   = "\033[0m"   if _enabled else ""
+    BOLD    = "\033[1m"    if _enabled else ""
+    DIM     = "\033[2m"    if _enabled else ""
+    CYAN    = "\033[36m"   if _enabled else ""
+    GREEN   = "\033[32m"   if _enabled else ""
+    YELLOW  = "\033[33m"   if _enabled else ""
+    BLUE    = "\033[34m"   if _enabled else ""
+    MAGENTA = "\033[35m"   if _enabled else ""
+    RED     = "\033[31m"   if _enabled else ""
+    WHITE   = "\033[97m"   if _enabled else ""
+    BG_BLUE = "\033[44m"   if _enabled else ""
+    BG_CYAN = "\033[46m"   if _enabled else ""
+
+
+def _banner(title: str, color: str = _C.CYAN, width: int = 72) -> None:
+    """装飾付きセクションバナーを出力する。"""
+    border = "━" * width
+    print(f"\n{color}{_C.BOLD}{border}{_C.RESET}")
+    print(f"{color}{_C.BOLD}  {title}{_C.RESET}")
+    print(f"{color}{_C.BOLD}{border}{_C.RESET}")
+
+
+def _sub_header(title: str) -> None:
+    """サブセクションヘッダーを出力する。"""
+    print(f"\n  {_C.DIM}{'─' * 68}{_C.RESET}")
+    print(f"  {_C.BOLD}{title}{_C.RESET}")
+    print(f"  {_C.DIM}{'─' * 68}{_C.RESET}")
+
+
+def _kv(key: str, value: str, indent: int = 4) -> None:
+    """キー・バリューペアを出力する。"""
+    pad = " " * indent
+    print(f"{pad}{_C.DIM}{key:<16}{_C.RESET} {_C.WHITE}{value}{_C.RESET}")
+
+
+def _status(icon: str, msg: str) -> None:
+    """ステータスメッセージを出力する。"""
+    print(f"  {icon} {msg}")
+
 
 def _load_config() -> dict:
     """analyzer_config.json を読み込む。"""
@@ -54,13 +99,13 @@ def run_document_intelligence(file_path: str) -> DIResult | None:
     key = os.environ.get("DOCUMENT_INTELLIGENCE_KEY", "")
 
     if not endpoint:
-        print("[Document Intelligence] DOCUMENT_INTELLIGENCE_ENDPOINT が設定されていません。スキップします。")
+        _status("⚠️ ", f"{_C.YELLOW}DOCUMENT_INTELLIGENCE_ENDPOINT が未設定。スキップします。{_C.RESET}")
         return None
 
-    print("[Document Intelligence] 分析を開始します...")
+    _status("🔍", f"{_C.BLUE}Document Intelligence{_C.RESET} 分析中...")
     client = di_create_client(endpoint, key or None)
     result = di_analyze(client, file_path)
-    print(f"[Document Intelligence] 分析完了 ({result.elapsed_seconds:.2f} 秒)")
+    _status("✅", f"{_C.GREEN}Document Intelligence 完了{_C.RESET} ({result.elapsed_seconds:.2f} 秒)")
     return result
 
 
@@ -70,7 +115,7 @@ def run_content_understanding(file_path: str, doc_type: str = "generic") -> CURe
     key = os.environ.get("CONTENT_UNDERSTANDING_KEY", "")
 
     if not endpoint:
-        print("[Content Understanding] CONTENT_UNDERSTANDING_ENDPOINT が設定されていません。スキップします。")
+        _status("⚠️ ", f"{_C.YELLOW}CONTENT_UNDERSTANDING_ENDPOINT が未設定。スキップします。{_C.RESET}")
         return None
 
     type_config = _get_doc_type_config(doc_type)
@@ -80,101 +125,106 @@ def run_content_understanding(file_path: str, doc_type: str = "generic") -> CURe
 
     client = ContentUnderstandingClient(endpoint, key or None)
 
-    # アナライザーが既に存在するか確認
     if client.analyzer_exists(analyzer_id):
-        print(f"[Content Understanding] 既存アナライザーを使用: {analyzer_id}")
+        _status("♻️ ", f"既存アナライザーを使用: {_C.CYAN}{analyzer_id}{_C.RESET}")
     else:
-        print(f"[Content Understanding] アナライザーを新規作成しています: {analyzer_id}")
+        _status("🆕", f"アナライザーを新規作成: {_C.CYAN}{analyzer_id}{_C.RESET}")
         client.create_analyzer(
             analyzer_id,
             description=description,
             field_schema=field_schema,
         )
         client.wait_for_analyzer_ready(analyzer_id)
-        print(f"[Content Understanding] アナライザー作成完了: {analyzer_id}")
+        _status("✅", f"アナライザー作成完了: {_C.CYAN}{analyzer_id}{_C.RESET}")
 
-    print("[Content Understanding] 分析を開始します...")
+    _status("🔍", f"{_C.MAGENTA}Content Understanding{_C.RESET} 分析中...")
     result = client.analyze_document(analyzer_id, file_path)
-    print(f"[Content Understanding] 分析完了 ({result.elapsed_seconds:.2f} 秒)")
+    _status("✅", f"{_C.GREEN}Content Understanding 完了{_C.RESET} ({result.elapsed_seconds:.2f} 秒)")
     return result
 
 
 def print_di_result(result: DIResult) -> None:
     """Document Intelligence の結果を表示する。"""
-    print("\n" + "=" * 70)
-    print("  Document Intelligence 結果")
-    print("=" * 70)
-    print(f"  モデル ID    : {result.model_id}")
-    print(f"  処理時間     : {result.elapsed_seconds:.2f} 秒")
-    print(f"  ページ数     : {len(result.pages)}")
+    _banner("📄 Document Intelligence 結果", _C.BLUE)
+
     total_words = sum(len(p.words) for p in result.pages)
     total_lines = sum(len(p.lines) for p in result.pages)
-    print(f"  検出行数     : {total_lines}")
-    print(f"  検出単語数   : {total_words}")
+
+    _kv("モデル ID", result.model_id)
+    _kv("処理時間", f"{result.elapsed_seconds:.2f} 秒")
+    _kv("ページ数", str(len(result.pages)))
+    _kv("検出行数", str(total_lines))
+    _kv("検出単語数", str(total_words))
 
     if result.pages:
         avg_conf = _avg_confidence_di(result)
-        print(f"  平均信頼度   : {avg_conf:.4f}")
+        _kv("平均信頼度", f"{avg_conf:.4f}")
 
-    print("-" * 70)
-    print("  抽出テキスト:")
-    print("-" * 70)
-    print(result.full_text[:2000])
+    _sub_header("📝 抽出テキスト")
+    print()
+    for line in result.full_text[:2000].splitlines():
+        print(f"    {line}")
     if len(result.full_text) > 2000:
-        print(f"\n  ... (以降 {len(result.full_text) - 2000} 文字省略)")
+        print(f"\n    {_C.DIM}... 以降 {len(result.full_text) - 2000} 文字省略{_C.RESET}")
     print()
 
 
 def print_cu_result(result: CUResult) -> None:
     """Content Understanding の結果を表示する。"""
-    print("\n" + "=" * 70)
-    print("  Content Understanding 結果")
-    print("=" * 70)
-    print(f"  アナライザーID : {result.analyzer_id}")
-    print(f"  処理時間       : {result.elapsed_seconds:.2f} 秒")
-    print(f"  ページ数       : {len(result.pages)}")
+    _banner("🤖 Content Understanding 結果", _C.MAGENTA)
+
     total_words = sum(len(p.words) for p in result.pages)
     total_lines = sum(len(p.lines) for p in result.pages)
-    print(f"  検出行数       : {total_lines}")
-    print(f"  検出単語数     : {total_words}")
+
+    _kv("アナライザーID", result.analyzer_id)
+    _kv("処理時間", f"{result.elapsed_seconds:.2f} 秒")
+    _kv("ページ数", str(len(result.pages)))
+    _kv("検出行数", str(total_lines))
+    _kv("検出単語数", str(total_words))
 
     if result.pages and any(p.words for p in result.pages):
         avg_conf = _avg_confidence_cu(result)
-        print(f"  平均信頼度     : {avg_conf:.4f}")
+        _kv("平均信頼度", f"{avg_conf:.4f}")
 
     if result.fields:
-        print(f"  抽出フィールド : {len(result.fields)} 件")
+        _sub_header(f"🏷️  抽出フィールド ({len(result.fields)} 件)")
+        print()
         for name, field in result.fields.items():
             if isinstance(field, dict):
                 val = field.get("valueNumber", field.get("valueString", field.get("valueDate", "")))
                 conf = field.get("confidence")
-                conf_str = f" (信頼度: {conf:.4f})" if conf is not None else ""
                 if isinstance(val, (int, float)):
                     val_str = f"{val:,.2f}" if isinstance(val, float) else f"{val:,}"
                 else:
                     val_str = str(val)
-                print(f"    {name}: {val_str}{conf_str}")
-            else:
-                print(f"    {name}: {field}")
 
-    print("-" * 70)
-    print("  抽出テキスト:")
-    print("-" * 70)
-    print(result.full_text[:2000])
+                conf_bar = ""
+                if conf is not None:
+                    filled = int(conf * 10)
+                    bar_color = _C.GREEN if conf >= 0.8 else (_C.YELLOW if conf >= 0.5 else _C.RED)
+                    conf_bar = f" {bar_color}{'█' * filled}{'░' * (10 - filled)}{_C.RESET} {conf:.1%}"
+
+                print(f"    {_C.CYAN}{name:<20}{_C.RESET} {_C.WHITE}{_C.BOLD}{val_str}{_C.RESET}{conf_bar}")
+            else:
+                print(f"    {_C.CYAN}{name:<20}{_C.RESET} {field}")
+        print()
+
+    _sub_header("📝 抽出テキスト")
+    print()
+    for line in result.full_text[:2000].splitlines():
+        print(f"    {line}")
     if len(result.full_text) > 2000:
-        print(f"\n  ... (以降 {len(result.full_text) - 2000} 文字省略)")
+        print(f"\n    {_C.DIM}... 以降 {len(result.full_text) - 2000} 文字省略{_C.RESET}")
     print()
 
 
 def print_comparison(di_result: DIResult | None, cu_result: CUResult | None) -> None:
     """両サービスの結果を比較表示する。"""
     if not di_result or not cu_result:
-        print("\n比較には両方のサービスの結果が必要です。")
+        print(f"\n  {_C.YELLOW}⚠️  比較には両方のサービスの結果が必要です。{_C.RESET}")
         return
 
-    print("\n" + "=" * 70)
-    print("  比較サマリー")
-    print("=" * 70)
+    _banner("⚖️  比較サマリー", _C.GREEN)
 
     di_total_words = sum(len(p.words) for p in di_result.pages)
     cu_total_words = sum(len(p.words) for p in cu_result.pages)
@@ -182,20 +232,33 @@ def print_comparison(di_result: DIResult | None, cu_result: CUResult | None) -> 
     cu_total_lines = sum(len(p.lines) for p in cu_result.pages)
 
     rows = [
-        ["処理時間 (秒)", f"{di_result.elapsed_seconds:.2f}", f"{cu_result.elapsed_seconds:.2f}"],
-        ["ページ数", len(di_result.pages), len(cu_result.pages)],
-        ["検出行数", di_total_lines, cu_total_lines],
-        ["検出単語数", di_total_words, cu_total_words],
-        ["テキスト文字数", len(di_result.full_text), len(cu_result.full_text)],
+        ["⏱️  処理時間 (秒)", f"{di_result.elapsed_seconds:.2f}", f"{cu_result.elapsed_seconds:.2f}"],
+        ["📄 ページ数", len(di_result.pages), len(cu_result.pages)],
+        ["📏 検出行数", di_total_lines, cu_total_lines],
+        ["🔤 検出単語数", di_total_words, cu_total_words],
+        ["📊 テキスト文字数", len(di_result.full_text), len(cu_result.full_text)],
     ]
 
     if di_result.pages:
-        rows.append(["平均信頼度", f"{_avg_confidence_di(di_result):.4f}", "-"])
+        di_conf = f"{_avg_confidence_di(di_result):.4f}"
+        cu_conf = "-"
+        if cu_result.pages and any(p.words for p in cu_result.pages):
+            cu_conf = f"{_avg_confidence_cu(cu_result):.4f}"
+        rows.append(["🎯 平均信頼度", di_conf, cu_conf])
 
-    if cu_result.pages and any(p.words for p in cu_result.pages):
-        rows[-1][2] = f"{_avg_confidence_cu(cu_result):.4f}"
-
-    print(tabulate(rows, headers=["項目", "Document Intelligence", "Content Understanding"], tablefmt="grid"))
+    print()
+    print(
+        tabulate(
+            rows,
+            headers=[
+                f"{_C.BOLD}項目{_C.RESET}",
+                f"{_C.BLUE}{_C.BOLD}Document Intelligence{_C.RESET}",
+                f"{_C.MAGENTA}{_C.BOLD}Content Understanding{_C.RESET}",
+            ],
+            tablefmt="rounded_outline",
+            colalign=("left", "right", "right"),
+        )
+    )
 
     # テキスト差分
     _print_text_diff(di_result.full_text, cu_result.full_text)
@@ -218,12 +281,15 @@ def _print_text_diff(text_a: str, text_b: str) -> None:
     lines_a = text_a.splitlines()
     lines_b = text_b.splitlines()
 
-    # 類似度を計算
     matcher = difflib.SequenceMatcher(None, text_a, text_b)
     similarity = matcher.ratio()
-    print(f"\n  テキスト類似度: {similarity:.2%}")
 
-    # 差分の概要
+    # 類似度バー
+    filled = int(similarity * 20)
+    bar_color = _C.GREEN if similarity >= 0.9 else (_C.YELLOW if similarity >= 0.7 else _C.RED)
+    bar = f"{bar_color}{'█' * filled}{'░' * (20 - filled)}{_C.RESET}"
+    print(f"\n  📊 テキスト類似度: {bar} {_C.BOLD}{similarity:.1%}{_C.RESET}")
+
     diff = list(difflib.unified_diff(
         lines_a[:50],
         lines_b[:50],
@@ -233,14 +299,21 @@ def _print_text_diff(text_a: str, text_b: str) -> None:
     ))
 
     if diff:
-        print("\n  テキスト差分 (先頭 50 行):")
-        print("-" * 70)
+        _sub_header("📝 テキスト差分 (先頭 50 行)")
+        print()
         for line in diff[:60]:
-            print(f"  {line}")
+            if line.startswith("+") and not line.startswith("+++"):
+                print(f"    {_C.GREEN}{line}{_C.RESET}")
+            elif line.startswith("-") and not line.startswith("---"):
+                print(f"    {_C.RED}{line}{_C.RESET}")
+            elif line.startswith("@@"):
+                print(f"    {_C.CYAN}{line}{_C.RESET}")
+            else:
+                print(f"    {_C.DIM}{line}{_C.RESET}")
         if len(diff) > 60:
-            print(f"  ... (以降 {len(diff) - 60} 行省略)")
+            print(f"    {_C.DIM}... 以降 {len(diff) - 60} 行省略{_C.RESET}")
     else:
-        print("\n  テキスト差分: なし (完全一致)")
+        print(f"\n  ✨ {_C.GREEN}テキスト差分なし (完全一致){_C.RESET}")
     print()
 
 
@@ -249,7 +322,7 @@ def _delete_analyzer_command(doc_type: str) -> None:
     endpoint = os.environ.get("CONTENT_UNDERSTANDING_ENDPOINT", "")
     key = os.environ.get("CONTENT_UNDERSTANDING_KEY", "")
     if not endpoint:
-        print("CONTENT_UNDERSTANDING_ENDPOINT が設定されていません。")
+        _status("❌", f"{_C.RED}CONTENT_UNDERSTANDING_ENDPOINT が未設定です。{_C.RESET}")
         return
 
     type_config = _get_doc_type_config(doc_type)
@@ -257,11 +330,11 @@ def _delete_analyzer_command(doc_type: str) -> None:
     client = ContentUnderstandingClient(endpoint, key or None)
 
     if not client.analyzer_exists(analyzer_id):
-        print(f"アナライザー '{analyzer_id}' は存在しません。")
+        _status("ℹ️ ", f"アナライザー '{_C.CYAN}{analyzer_id}{_C.RESET}' は存在しません。")
         return
 
     client.delete_analyzer(analyzer_id)
-    print(f"アナライザー '{analyzer_id}' (書類形式: {doc_type}) を削除しました。")
+    _status("🗑️ ", f"アナライザー '{_C.CYAN}{analyzer_id}{_C.RESET}' ({_C.DIM}{doc_type}{_C.RESET}) を削除しました。")
 
 
 def main() -> None:
@@ -299,13 +372,17 @@ def main() -> None:
     if args.list_types:
         config = _load_config()
         types = config.get("doc_types", {})
-        print("利用可能な書類形式:")
-        print("-" * 60)
+        _banner("📋 利用可能な書類形式", _C.CYAN)
+        print()
         for name, info in sorted(types.items()):
             fields = list(info.get("field_schema", {}).get("fields", {}).keys())
-            print(f"  {name:<20} {info.get('description', '')}")
+            analyzer_id = info.get("analyzer_id", "")
+            print(f"    {_C.BOLD}{_C.CYAN}{name}{_C.RESET}")
+            print(f"      {_C.DIM}説明:{_C.RESET}        {info.get('description', '')}")
+            print(f"      {_C.DIM}アナライザー:{_C.RESET}  {analyzer_id}")
             if fields:
-                print(f"  {'':20} フィールド: {', '.join(fields)}")
+                print(f"      {_C.DIM}フィールド:{_C.RESET}    {', '.join(fields)}")
+            print()
         return
 
     # アナライザー削除
@@ -318,11 +395,18 @@ def main() -> None:
         parser.error("分析するファイルを指定してください (--list-types で書類形式一覧を確認できます)")
 
     if not os.path.exists(args.file):
-        print(f"エラー: ファイルが見つかりません: {args.file}")
+        _status("❌", f"{_C.RED}ファイルが見つかりません: {args.file}{_C.RESET}")
         sys.exit(1)
 
-    print(f"対象ファイル: {args.file}")
-    print(f"ファイルサイズ: {os.path.getsize(args.file):,} bytes")
+    _banner("🔎 OCR 比較分析", _C.WHITE)
+    _kv("対象ファイル", args.file)
+    _kv("ファイルサイズ", f"{os.path.getsize(args.file):,} bytes")
+    if not args.di_only and not args.cu_only:
+        _kv("モード", "両サービス比較")
+    elif args.di_only:
+        _kv("モード", "Document Intelligence のみ")
+    else:
+        _kv("モード", f"Content Understanding のみ (書類形式: {args.doc_type})")
     print()
 
     di_result = None
@@ -332,13 +416,13 @@ def main() -> None:
         try:
             di_result = run_document_intelligence(args.file)
         except Exception as e:
-            print(f"[Document Intelligence] エラーが発生しました: {e}")
+            _status("❌", f"{_C.RED}Document Intelligence エラー: {e}{_C.RESET}")
 
     if not args.di_only:
         try:
             cu_result = run_content_understanding(args.file, doc_type=args.doc_type)
         except Exception as e:
-            print(f"[Content Understanding] エラーが発生しました: {e}")
+            _status("❌", f"{_C.RED}Content Understanding エラー: {e}{_C.RESET}")
 
     # 結果表示
     if di_result:
